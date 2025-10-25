@@ -1,10 +1,23 @@
 import React, { useRef, useState, useEffect } from "react";
 import Globe from "react-globe.gl";
+import { feature } from "topojson-client";
 
 export default function GlobePanel({ onSelectCountry }) {
   const globeRef = useRef();
   const containerRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [countries, setCountries] = useState([]);
+
+  // Load country polygons (GeoJSON) once
+  useEffect(() => {
+    fetch("https://unpkg.com/world-atlas@2/countries-110m.json")
+      .then((res) => res.json())
+      .then((topojsonData) => {
+        // Convert TopoJSON to GeoJSON
+        const geoJson = feature(topojsonData, topojsonData.objects.countries).features;
+        setCountries(geoJson);
+      });
+  }, []);
 
   useEffect(() => {
     const updateDimensions = () => {
@@ -39,9 +52,14 @@ export default function GlobePanel({ onSelectCountry }) {
           ref={globeRef}
           globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
           backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-          onGlobeClick={(event) => {
-            const { lat, lng } = event;
-            onSelectCountry && onSelectCountry({ lat, lon: lng });
+          polygonsData={countries}
+          polygonCapColor={(d) => "rgba(0, 255, 0, 0.3)"}
+          polygonSideColor={() => "rgba(0, 100, 0, 0.15)"}
+          polygonStrokeColor={() => "#111"}
+          polygonLabel={(d) => `<b>${d.properties.name}</b>`}
+          polygonAltitude={0.01}
+          onPolygonClick={(d) => {
+            onSelectCountry && onSelectCountry(d.properties.name);
           }}
           width={dimensions.width}
           height={dimensions.height}

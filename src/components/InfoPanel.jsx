@@ -5,7 +5,7 @@ export default function InfoPanel({ country }) {
       
       {country ? (
         <div className="bg-blue-50 p-4 rounded-lg">
-          <h2 className="text-lg font-semibold mb-2">{country.name}</h2>
+          <h2 className="text-lg font-semibold mb-2">{country}</h2>
           <p className="text-gray-600">Population: {country.population?.toLocaleString() || 'N/A'}</p>
           <p className="text-gray-600">Capital: {country.capital || 'N/A'}</p>
           <p className="text-gray-600">Region: {country.region || 'N/A'}</p>
