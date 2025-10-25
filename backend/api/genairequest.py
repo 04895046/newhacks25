@@ -130,114 +130,210 @@ TRAVEL_RATING_SCHEMA = {
             "description": "The name of the country or specific region being rated."
         },
         "cultural_historical": {
-            "value": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 5,
-                "description": "Rating from 1 (low) to 5 (high) based on cultural and historical significance."
+            "type": "object",
+            "description": "Rating and explanation for cultural/historical value.",
+            "properties": {
+                "value": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Rating from 1 (low) to 5 (high) based on cultural and historical significance."
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "A short explanation justifying the cultural and historical value rating."
+                }
             },
-            "explanation": {
-                "type": "string",
-                "description": "A short explanation justifying the cultural and historical value rating."
-
-            }
+            "required": ["value", "explanation"]
         },
         "natural_beauty": {
-            "value": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 5,
-                "description": "Rating from 1 (low) to 5 (high) based on scenic/nature quality and natural (parks, vistas) attractions."
+            "type": "object",
+            "description": "Rating and explanation for natural beauty.",
+            "properties": {
+                "value": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Rating from 1 (low) to 5 (high) based on scenic/nature quality and natural (parks, vistas) attractions."
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "A short explanation justifying the natural beauty rating."
+                }
             },
-            "explanation": {
-                "type": "string",
-                "description": "A short explanation justifying the natural beauty rating."
-            }
+            "required": ["value", "explanation"]
         },
         "relaxation": {
-            "value": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 5,
-                "description": "Rating from 1 (low) to 5 (high) based on opportunities for rest, peace, and low-stress environment."
+            "type": "object",
+            "description": "Rating and explanation for relaxation.",
+            "properties": {
+                "value": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Rating from 1 (low) to 5 (high) based on opportunities for rest, peace, and low-stress environment."
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "A short explanation justifying the relaxation rating."
+                }
             },
-            "explanation": {
-                "type": "string",
-                "description": "A short explanation justifying the relaxation rating."
-            }
+            "required": ["value", "explanation"]
         },
         "shopping": {
-            "value": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 5,
-                "description": "Rating from 1 (low) to 5 (high) based on the quality and variety of shopping experiences."
+            "type": "object",
+            "description": "Rating and explanation for shopping.",
+            "properties": {
+                "value": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Rating from 1 (low) to 5 (high) based on the quality and variety of shopping experiences."
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "A short explanation justifying the shopping rating."
+                }
             },
-            "explanation": {
-                "type": "string",
-                "description": "A short explanation justifying the shopping rating."
-            }
+            "required": ["value", "explanation"]
         },
         "entertainment_nightlife": {
-            "value": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 5,
-                "description": "Rating from 1 (low) to 5 (high) based on the vibrancy and diversity of nightlife and entertainment options."
+            "type": "object",
+            "description": "Rating and explanation for entertainment/nightlife.",
+            "properties": {
+                "value": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Rating from 1 (low) to 5 (high) based on the vibrancy and diversity of nightlife and entertainment options."
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "A short explanation justifying the entertainment and nightlife rating."
+                }
             },
-            "explanation": {
-                "type": "string",
-                "description": "A short explanation justifying the entertainment and nightlife rating."
-            }
+            "required": ["value", "explanation"]
         },
         "budget_friendliness": {
-            "value": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 5,
-                "description": "Rating from 1 (expensive) to 5 (very affordable) for general travel costs."
+            "type": "object",
+            "description": "Rating and explanation for budget friendliness.",
+            "properties": {
+                "value": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Rating from 1 (expensive) to 5 (very affordable) for general travel costs."
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "A short explanation justifying the budget friendliness rating."
+                }
             },
-            "explanation": {
-                "type": "string",
-                "description": "A short explanation justifying the budget friendliness rating."
-            }
+            "required": ["value", "explanation"]
         },
-        "safety_status": {
-            "value": {
-                "type": "string",
-                "enum": [
-                    "Take normal security precautions",
-                    "Exercise a high degree of caution",
-                    "Avoid non-essential travel",
-                    "Avoid all travel"
-                ],
-                "description": "The concise official travel advisory status, restricted to one of four options based on travel.gc.ca."
+        "safety": {
+            "type": "object",
+            "description": "Safety advisory status and explanation.",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "Take normal security precautions",
+                        "Exercise a high degree of caution",
+                        "Avoid non-essential travel",
+                        "Avoid all travel"
+                    ],
+                    "description": "The concise official travel advisory status, restricted to one of four options based on travel.gc.ca."
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "A short, distinct explanation justifying the safety_status, based on travel.gc.ca advisories."
+                }
             },
-            "explanation": {
-                "type": "string",
-                "description": "A short, distinct explanation justifying the safety_status, based on travel.gc.ca advisories."
-            }
-        },
+            "required": ["status", "explanation"]
+        }
     },
     "required": [
         "destination_name",
-        "cultural_historical_value",
-        "cultural_historical_explanation",
+        "cultural_historical",
         "natural_beauty",
-        "natural_beauty_explanation",
         "relaxation",
-        "relaxation_explanation",
         "shopping",
-        "shopping_explanation",
         "entertainment_nightlife",
-        "entertainment_nightlife_explanation",
         "budget_friendliness",
-        "budget_friendliness_explanation",
-        "safety_status",
-        "safety_explanation"
+        "safety"
     ]
 }
 
+def get_travel_ratings_list(destinations: list[str]):
+    """
+    Generates structured travel ratings for multiple destinations, enforcing source
+    constraints using search queries embedded in the user prompt.
+
+    Args:
+        destinations: A list of country or sub-national areas to rate.
+    """
+    try:
+        client = genai.Client()
+    except Exception as e:
+        print(f"Error initializing Gemini client: {e}")
+        return []
+
+    all_ratings = []  # List to store all results
+
+    # 2. Define the Prompt with all constraints and grounding instructions embedded
+    # This will be done *inside* the loop
+
+    # 3. Configure the generation request for JSON output and search grounding
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=TRAVEL_RATING_SCHEMA,
+    )
+
+    # --- Loop through each destination ---
+    for destination in destinations:
+        prompt_text = f"""
+        You are an expert travel analyst. Your task is to provide a comprehensive rating for the destination: {destination}.
+        STRICTLY follow these rules for populating the JSON schema:
+
+        1. For ALL fields ending in '_explanation', provide a short, distinct justification for the corresponding integer rating.
+
+        2. For the 'safety_status' field, you MUST provide only the concise status phrase from the following four, and ONLY these four, options. Select the most appropriate option based on the EXACT URL: https://travel.gc.ca/travelling/advisories.
+        The detailed reasoning MUST go into the 'safety_explanation' field. To find the correct status, use Google Search and specifically check the official travel advisory from travel.gc.ca for {destination}.
+            - "Take normal security precautions"
+            - "Exercise a high degree of caution"
+            - "Avoid non-essential travel"
+            - "Avoid all travel"
+
+        3. For all other fields (the 1-5 ratings and explanations), you MUST ONLY use information from either https://travel.gc.ca/travelling/advisories or wikipedia.org. If you need context for cultural/natural/etc., prioritize Wikipedia.
+
+        4. Ensure all ratings are integers (1-5).
+
+        Provide the travel rating and advisory data for the destination: {destination}.
+        """
+
+        print(f"\n--- API Call: Travel Ratings for {destination} (No System Instruction) ---")
+
+        # 5. Make the API call, passing the prompt_text string directly as contents
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-pro',
+                contents=prompt_text,
+                config=config,
+            )
+
+            # 6. Process and display the structured response
+            print(f"\n--- Structured Travel Rating Response (JSON) for {destination} ---")
+            parsed_json = json.loads(response.text)
+            print(json.dumps(parsed_json, indent=2))
+            print("------------------------------------------")
+            all_ratings.append(parsed_json)
+
+        except Exception as e:
+            print(f"An error occurred during the API call for {destination}: {e}")
+            all_ratings.append(None)  # Add None on failure for this item
+
+    return all_ratings  # Return the list of results
 
 def get_travel_ratings(destination: str):
     """
@@ -289,7 +385,7 @@ def get_travel_ratings(destination: str):
     # 6. Make the API call
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.5-pro',
             contents=prompt_text,
             config=config,
         )
@@ -366,7 +462,7 @@ def generate_structured_itinerary(currLocation: str, destRegion: str, details: s
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.5-pro',
             contents=prompt,
             config=config,
         )
@@ -391,6 +487,6 @@ if __name__ == "__main__":
         # Example demonstrating integer price (no currency) and float duration
         currLocation = "Toronto, Canada"
         destRegion = "Erbil"
-        details = "A 2-day itinerary focusing on historical sites and Kurdish culture."
+        details = "A 2-day itinerary focusing on general tourist attractions."
         # generate_structured_itinerary(currLocation, destRegion, details)
-        get_travel_ratings("Erbil")
+        generate_structured_itinerary(currLocation, "Toronto", details)
