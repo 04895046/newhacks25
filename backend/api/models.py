@@ -19,6 +19,26 @@ class Itinerary(models.Model):
 
     def __str__(self):
         return f"'{self.title}' by {self.owner.username}"
+    
+    def get_next_order(self):
+        """Get the next order number for appending a new item."""
+        last_item = self.items.order_by('-order').first()
+        return (last_item.order + 1) if last_item else 0
+    
+    def append_item(self, description, location_name='', start_time=None, end_time=None):
+        """
+        Append a new item to the end of the itinerary.
+        Returns the created ItineraryItem.
+        """
+        next_order = self.get_next_order()
+        return ItineraryItem.objects.create(
+            itinerary=self,
+            description=description,
+            location_name=location_name,
+            start_time=start_time,
+            end_time=end_time,
+            order=next_order
+        )
 
 
 class ItineraryItem(models.Model):
@@ -44,3 +64,116 @@ class ItineraryItem(models.Model):
 
     def __str__(self):
         return f"{self.order}: {self.description[:50]}"
+    
+    def insert_before(self, description, location_name='', start_time=None, end_time=None):
+        """
+        Insert a new item BEFORE this item.
+        Automatically shifts this item and all items after it down by 1.
+        Returns the newly created ItineraryItem.
+        """
+        # Shift all items at or after this position down by 1
+        items_to_shift = ItineraryItem.objects.filter(
+            itinerary=self.itinerary,
+            order__gte=self.order
+        ).order_by('-order')
+        
+        for item in items_to_shift:
+            item.order += 1
+            item.save()
+        
+        # Create the new item at the current position
+        return ItineraryItem.objects.create(
+            itinerary=self.itinerary,
+            description=description,
+            location_name=location_name,
+            start_time=start_time,
+            end_time=end_time,
+            order=self.order
+        )
+    
+    def insert_after(self, description, location_name='', start_time=None, end_time=None):
+        """
+        Insert a new item AFTER this item.
+        Automatically shifts all items after this item down by 1.
+        Returns the newly created ItineraryItem.
+        """
+        new_order = self.order + 1
+        
+        # Shift all items after this position down by 1
+        items_to_shift = ItineraryItem.objects.filter(
+            itinerary=self.itinerary,
+            order__gte=new_order
+        ).order_by('-order')
+        
+        for item in items_to_shift:
+            item.order += 1
+            item.save()
+        
+        # Create the new item at the new position
+        return ItineraryItem.objects.create(
+            itinerary=self.itinerary,
+            description=description,
+            location_name=location_name,
+            start_time=start_time,
+            end_time=end_time,
+            order=new_order
+        )
+    
+    def move_to(self, new_order):
+        """
+        Move this item to a new position in the itinerary.
+        Automatically handles reordering of other items.
+        """
+        if new_order < 0:
+            raise ValueError("Order must be non-negative")
+        
+        old_order = self.order
+        
+        if old_order == new_order:
+            return  # No change needed
+        
+        # Temporarily set this item to a very high order to avoid conflicts
+        temp_order = 999999
+        self.order = temp_order
+        self.save()
+        
+        if new_order > old_order:
+            # Moving down: shift items between old and new position up
+            ItineraryItem.objects.filter(
+                itinerary=self.itinerary,
+                order__gt=old_order,
+                order__lte=new_order
+            ).update(order=models.F('order') - 1)
+        else:
+            # Moving up: shift items between new and old position down
+            ItineraryItem.objects.filter(
+                itinerary=self.itinerary,
+                order__gte=new_order,
+                order__lt=old_order
+            ).update(order=models.F('order') + 1)
+        
+        # Now set this item to its final position
+        self.order = new_order
+        self.save()
+    
+    def delete(self, *args, **kwargs):
+        """
+        Override delete to automatically reorder remaining items.
+        When an item is deleted, all items after it shift up by 1.
+        """
+        deleted_order = self.order
+        itinerary = self.itinerary
+        
+        # First, move items after the deleted position to temporary high orders
+        items_to_shift = list(ItineraryItem.objects.filter(
+            itinerary=itinerary,
+            order__gt=deleted_order
+        ).order_by('order'))
+        
+        # Delete the item first
+        super().delete(*args, **kwargs)
+        
+        # Now shift all items after the deleted position up by 1
+        for item in items_to_shift:
+            item.order = item.order - 1
+            item.save()
