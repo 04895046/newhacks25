@@ -14,6 +14,12 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
+# Helper function to convert string environment variables to boolean
+def get_bool_env(var_name, default=False):
+    """Convert environment variable to boolean"""
+    value = os.getenv(var_name, str(default))
+    return value.lower() in ('true', '1', 'yes', 'on')
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -164,3 +170,16 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
 }
+
+# Security settings
+# These settings should be configured based on your deployment environment
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '0' if DEBUG else '2592000'))
+SECURE_HSTS_PRELOAD = get_bool_env('SECURE_HSTS_PRELOAD', not DEBUG)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = get_bool_env('SECURE_HSTS_INCLUDE_SUBDOMAINS', not DEBUG)
+SECURE_PROXY_SSL_HEADER = None if DEBUG else ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Additional security settings for production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = get_bool_env('SECURE_SSL_REDIRECT', True)
+    SESSION_COOKIE_SECURE = get_bool_env('SESSION_COOKIE_SECURE', True)
+    CSRF_COOKIE_SECURE = get_bool_env('CSRF_COOKIE_SECURE', True)
