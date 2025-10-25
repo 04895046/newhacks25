@@ -18,7 +18,8 @@ gunicorn my_backend.wsgi:application \
     --bind 127.0.0.1:8000 \
     --daemon \
     --log-file gunicorn.log \
-    --log-level info
+    --log-level info \ 
+    --forwarded-allow-ips "*" 
 
 echo "Gunicorn has been started."
 echo "You can check the logs with: tail -f gunicorn.log"
