@@ -4,13 +4,15 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.authtoken.models import Token
 from django.conf import settings # To get the API key
 from django.contrib.auth.models import User
 from .models import (
     Itinerary, ItineraryItem, BillGroup, Expense, ExpenseSplit # Add new models
 )
 from .serializers import (
-    UserSerializer, ItineraryDetailSerializer, ItineraryListSerializer,
+    UserSerializer, UserSimpleSerializer, ItineraryDetailSerializer, ItineraryListSerializer,
     ItineraryItemSerializer, BillGroupSerializer, BillGroupDetailSerializer,
     ExpenseSerializer # Add new serializers
 )
@@ -36,6 +38,56 @@ class UserCreateView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny]  # Allow anyone to register
+
+
+class CustomAuthTokenLoginView(ObtainAuthToken):
+    """
+    Custom login view that returns the auth token AND user info.
+    POST /api/login/
+    Body: {"username": "user", "password": "pass"}
+    Returns: {"token": "...", "user": {"id": 1, "username": "user"}}
+    """
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data,
+                                           context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        token, created = Token.objects.get_or_create(user=user)
+
+        # Serialize the user info using UserSimpleSerializer
+        user_serializer = UserSimpleSerializer(user)
+
+        return Response({
+            'token': token.key,
+            'user': user_serializer.data # Include user info here
+        })
+
+
+class UserSearchView(generics.ListAPIView):
+    """
+    API endpoint to search for users by username.
+    Requires authentication.
+    Usage: GET /api/users/search/?q=some_username
+    """
+    serializer_class = UserSimpleSerializer
+    permission_classes = [IsAuthenticated] # Only logged-in users can search
+
+    def get_queryset(self):
+        """
+        Filter users based on the 'q' query parameter (case-insensitive contains).
+        Excludes the requesting user.
+        """
+        queryset = User.objects.all()
+        username_query = self.request.query_params.get('q', None)
+        if username_query is not None and username_query.strip():
+            # Case-insensitive search for usernames containing the query
+            queryset = queryset.filter(username__icontains=username_query.strip())
+
+        # Exclude the user making the request from the search results
+        queryset = queryset.exclude(id=self.request.user.id)
+
+        # Limit results for performance (optional but recommended)
+        return queryset.order_by('username')[:20] # Return max 20 results
 
 
 # ============================================
@@ -184,17 +236,31 @@ class BillGroupViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """
-        This is the updated, simpler create method.
+        Create the group, add the creator, and add any other specified members by ID.
         """
-        # The serializer.save() will handle saving the 'members' field
-        # that was passed in the request (e.g., [1, 2, 3])
-        # because 'members' is a writeable field on the serializer.
-        group = serializer.save()
-        
-        # We just need to ensure the creator is also added,
-        # in case they forgot to add themselves to the list.
-        # .add() is safe and won't create duplicates.
+        # Get member IDs from the request data *before* saving the serializer
+        member_ids_str = self.request.data.get('members', []) # Expecting a list of IDs as strings or integers
+        member_ids = []
+        if isinstance(member_ids_str, list):
+             try:
+                 # Ensure IDs are integers
+                 member_ids = [int(id_val) for id_val in member_ids_str]
+             except (ValueError, TypeError):
+                 # Handle potential errors if input is not list of numbers
+                 # Optionally raise a ValidationError here
+                 pass
+
+        # Save the group (without members initially via serializer)
+        group = serializer.save() # Serializer is read-only for members now
+
+        # Add the creator
         group.members.add(self.request.user)
+
+        # Add other members specified in the request
+        if member_ids:
+            # Fetch valid users matching the provided IDs
+            users_to_add = User.objects.filter(id__in=member_ids).exclude(id=self.request.user.id) # Exclude self if passed
+            group.members.add(*users_to_add) # Add the valid users
     
     @action(detail=True, methods=['get'])
     def balances(self, request, pk=None):

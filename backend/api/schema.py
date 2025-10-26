@@ -15,11 +15,14 @@ class ReceiptItem(BaseModel):
         description="The clear English translation of the item name (e.g., 'TV Shrimp Gratin')."
     )
     
-    price: int = Field(
-        description="The price of the item as an integer, with no currency symbols (e.g., 458)."
+    price: float = Field(
+        description="The price of the item as an integer, with no currency symbols (e.g., 458.7)."
     )
     currency: str = Field(
         description="The currency used in the transaction in ISO 4217 currency codes (e.g., USD)."
+    )
+    price_in_cad: float = Field(
+        description="The amount of money in canadian dollars"
     )
 
 

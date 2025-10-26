@@ -3,6 +3,16 @@ from django.contrib.auth.models import User
 from .models import Itinerary, ItineraryItem, BillGroup, Expense, ExpenseSplit # Add new models
 import decimal
 
+class UserSimpleSerializer(serializers.ModelSerializer):
+    """
+    A simple serializer to show user ID and username.
+    Used for showing member information in groups.
+    """
+    class Meta:
+        model = User
+        fields = ['id', 'username']
+
+
 class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for user registration.
@@ -184,32 +194,27 @@ class ExpenseSerializer(serializers.ModelSerializer):
 class BillGroupSerializer(serializers.ModelSerializer):
     """
     Serializer for a list of BillGroups.
+    Now includes member IDs and usernames.
     """
-    members = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=User.objects.all(),
-        required=False # Not required, as we'll add the creator automatically
-    )
-    
-    # We add a read-only field to *show* the names
-    member_names = serializers.StringRelatedField(many=True, read_only=True, source='members')
+    # Use the simple serializer for members, make it read-only
+    members = UserSimpleSerializer(many=True, read_only=True)
     
     class Meta:
         model = BillGroup
-        fields = ['id', 'name', 'members', 'member_names', 'created_at']
-        read_only_fields = ['member_names']
+        # The 'members' field passed during creation is handled in the ViewSet
+        fields = ['id', 'name', 'members', 'created_at']
 
 
 class BillGroupDetailSerializer(serializers.ModelSerializer):
     """
-    Serializer for one BillGroup, showing its members and expenses.
+    Serializer for one BillGroup, showing members (with IDs) and expenses.
     """
-    # Use our new read-only 'member_names' field
-    member_names = serializers.StringRelatedField(many=True, read_only=True, source='members')
+    # Use the simple serializer here too
+    members = UserSimpleSerializer(many=True, read_only=True)
     
     # Show all expenses, nested, using the ExpenseSerializer
     expenses = ExpenseSerializer(many=True, read_only=True) 
 
     class Meta:
         model = BillGroup
-        fields = ['id', 'name', 'member_names', 'created_at', 'expenses']
+        fields = ['id', 'name', 'members', 'created_at', 'expenses']

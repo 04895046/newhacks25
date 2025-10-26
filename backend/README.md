@@ -8,13 +8,9 @@ Django REST Framework backend for an AI-powered itinerary generation app.
 - ✅ User registration and login
 - ✅ CRUD operations for itineraries
 - ✅ CRUD operations for itinerary items
-- ✅ **Smart append & insert methods** (automatic order management)
-- ✅ **Move & delete with auto-reordering** (no gaps in order)
 - ✅ ML-powered itinerary generation endpoint (ready for your model)
 - ✅ CORS configured for cross-origin requests
 - ✅ Order-based itinerary items (replaces linked list with efficient querying)
-
-> 💡 **NEW!** Easy-to-use methods for appending and inserting items. See `APPEND_INSERT_SUMMARY.md` for details!
 
 ## 🛠️ Quick Setup
 
