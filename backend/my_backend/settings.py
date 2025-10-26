@@ -158,14 +158,22 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # HACKATHON-FRIENDLY SETTINGS
 # ============================================
 
-# Allow any frontend to connect (fastest for a hackathon)
-# For production, replace with your specific frontend URL
-CORS_ORIGIN_ALLOW_ALL = True
+# CORS Configuration - Allow specific origins for better security
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",  # Vite default
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",  # Alternative Vite port
+    "http://localhost:8080",
+    "http://localhost:8000",
+    # Add your deployed frontend URL here
+]
 
 # Allow credentials (cookies, authorization headers, etc.)
 CORS_ALLOW_CREDENTIALS = True
 
-# Allow all headers
+# Allow all standard headers
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -178,7 +186,7 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# Allow all methods
+# Allow all HTTP methods
 CORS_ALLOW_METHODS = [
     'DELETE',
     'GET',
@@ -188,14 +196,10 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
-# Alternative for production (uncomment and modify):
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",  # Vite default
-    "http://127.0.0.1:5173",
-    
-    # Add your deployed frontend URL here
+# Expose Authorization header in responses
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'authorization',
 ]
 
 # Django REST Framework Configuration
@@ -207,6 +211,20 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
 }
+
+# CSRF Settings - Exempt API endpoints since we're using Token auth
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://localhost:8080",
+    "http://localhost:8000",
+]
+
+# For Token authentication, CSRF is not needed for API endpoints
+# DRF handles this automatically, but we whitelist origins just in case
 
 # Security settings
 # These settings should be configured based on your deployment environment
