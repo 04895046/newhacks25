@@ -41,72 +41,7 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
     - Preferences: {preferences['preferences']}
 
     The JSON object must follow this exact structure (USE DOUBLE QUOTES ONLY):
-    {{
-      "tripTitle": "A creative and exciting title for the trip to {preferences['destination']}",
-      "summary": "A brief, engaging summary of the trip.",
-      "flightInfo": {{
-        "departure": {{
-            "airline": "Airline Name",
-            "flightNumber": "Flight Number",
-            "departureAirport": "Airport Code/Name",
-            "arrivalAirport": "Airport Code/Name",
-            "departureTime": "YYYY-MM-DDTHH:MM:SSZ",
-            "arrivalTime": "YYYY-MM-DDTHH:MM:SSZ",
-            "duration": "Xh Ym",
-            "departureCoordinates": {{"latitude": float, "longitude": float}},
-            "arrivalCoordinates": {{"latitude": float, "longitude": float}}
-        }},
-        "return": {{
-            "airline": "Airline Name",
-            "flightNumber": "Flight Number",
-            "departureAirport": "Airport Code/Name",
-            "arrivalAirport": "Airport Code/Name",
-            "departureTime": "YYYY-MM-DDTHH:MM:SSZ",
-            "arrivalTime": "YYYY-MM-DDTHH:MM:SSZ",
-            "duration": "Xh Ym",
-            "departureCoordinates": {{"latitude": float, "longitude": float}},
-            "arrivalCoordinates": {{"latitude": float, "longitude": float}}
-        }},
-        "price": "Estimated price for round trip (e.g., ~$1200 USD)",
-        "bookingLink": "A URL to a flight search engine like Google Flights with the search pre-filled."
-      }},
-      "dailyPlan": [
-        {{
-          "day": 1,
 
-          "activities": [
-            {{
-              "duration": "Duration of the activity, in hours, float.",
-              "description": "Detailed description of the activity.",
-              "name": "Specific name and address of the location.",
-              "location": "Coordinates of the activity, two floats.",
-              "description": "Additional practical information.",
-              "price": "Price in the local currency, integer.",
-              "bookingLink": "An optional URL for booking tickets or reservations if available."
-            }},
-            {{
-              "type": "transport",
-              "transportationType": "transportation method type",
-              "startPoint": "Name and address of starting location",
-              "endPoint": "Name and address of ending location",
-              "startCoordinates": {{"latitude": float, "longitude": float}},
-              "endCoordinates": {{"latitude": float, "longitude": float}},
-              "duration": float,
-              "price": integer,
-              "description": "Brief description of the journey"
-            }},
-            {{
-              "duration": float,
-              "description": "Another activity description.",
-              "name": "Another specific location name and address.",
-              "coordinates": {{"latitude": float, "longitude": float}},
-              "price": integer,
-              "bookingLink": null
-            }}
-          ]
-        }}
-      ]
-    }}
 
     CRITICAL RULES:
     1. USE DOUBLE QUOTES FOR ALL JSON STRINGS - NO SINGLE QUOTES
@@ -398,6 +333,6 @@ def get_daily_summary(itinerary: Dict[str, Any], day: int) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     preferences = {"destination": "Vancouver", "tripLength": "2 days", "budget": "500",
-                   "currentLocation": {"latitude": 43.0, "longitude": 79.0}}
+                   "currentLocation": {"latitude": 43.0, "longitude": -79.0}, "preferences": "natural hikes"}
     currentLocation = {"latitude": 43.0, "longitude": -79.0}
     print(generate_itinerary(preferences, currentLocation))

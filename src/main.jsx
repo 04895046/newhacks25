@@ -5,7 +5,7 @@ import App from './App.jsx'
 import axios from "axios";
 
 // Set backend URL
-axios.defaults.baseURL = "https://jingtianhu.cc";
+axios.defaults.baseURL = "https://evenonvodkathiswill.work";
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
