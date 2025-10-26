@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Itinerary, ItineraryItem
-
+from .models import Itinerary, ItineraryItem, BillGroup, Expense, ExpenseSplit # Add new models
+import decimal
 
 class UserSerializer(serializers.ModelSerializer):
     """
@@ -71,3 +71,145 @@ class ItineraryListSerializer(serializers.ModelSerializer):
 
     def get_item_count(self, obj):
         return obj.items.count()
+
+
+
+class ExpenseSplitSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the *input* of who owes what.
+    """
+    # We send the user_id, not the whole user object
+    user_owed_id = serializers.IntegerField(write_only=True) 
+
+    class Meta:
+        model = ExpenseSplit
+        fields = ['user_owed_id', 'amount_owed']
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating a new Expense.
+    This is the "nested" serializer.
+    """
+    # This 'splits' field will accept a *list* of ExpenseSplit objects
+    splits = ExpenseSplitSerializer(many=True, write_only=True)
+    payer_id = serializers.IntegerField(write_only=True)
+
+    class Meta:
+        model = Expense
+        fields = [
+            'id', 'group', 'description', 'total_amount', 'payer_id', 
+            'split_type', 'receipt_image', 'item_data_json', 'splits'
+        ]
+
+    def validate(self, data):
+        """
+        Check that:
+        1. The payer exists and is a member of the group
+        2. All users in splits exist and are members of the group
+        3. The sum of the splits equals the total_amount
+        """
+        group = data['group']
+        payer_id = data['payer_id']
+        
+        # Check if payer exists
+        try:
+            payer = User.objects.get(id=payer_id)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(
+                f"Payer with ID {payer_id} does not exist."
+            )
+        
+        # Check if payer is a member of the group
+        if payer not in group.members.all():
+            raise serializers.ValidationError(
+                f"Payer '{payer.username}' is not a member of this group."
+            )
+        
+        # Check if all users in splits exist and are members
+        for split_data in data['splits']:
+            user_owed_id = split_data['user_owed_id']
+            try:
+                user_owed = User.objects.get(id=user_owed_id)
+            except User.DoesNotExist:
+                raise serializers.ValidationError(
+                    f"User with ID {user_owed_id} in splits does not exist."
+                )
+            
+            if user_owed not in group.members.all():
+                raise serializers.ValidationError(
+                    f"User '{user_owed.username}' in splits is not a member of this group."
+                )
+        
+        # Check that the sum of the splits equals the total_amount
+        total_split = sum(
+            split_data['amount_owed'] for split_data in data['splits']
+        )
+        total_amount = data['total_amount']
+
+        # Use Decimal for money comparison
+        if not decimal.Decimal(total_split).quantize(decimal.Decimal('.01')) == \
+               decimal.Decimal(total_amount).quantize(decimal.Decimal('.01')):
+            raise serializers.ValidationError(
+                f"The sum of splits (${total_split}) does not "
+                f"match the total_amount (${total_amount})."
+            )
+        
+        return data
+
+    def create(self, validated_data):
+        """
+        This is the magic. It creates the Expense AND all its Splits.
+        """
+        splits_data = validated_data.pop('splits')
+        payer_id = validated_data.pop('payer_id')
+        
+        # Create the parent Expense object
+        expense = Expense.objects.create(
+            payer_id=payer_id, 
+            **validated_data
+        )
+
+        # Loop through the split data and create each ExpenseSplit object
+        for split_data in splits_data:
+            ExpenseSplit.objects.create(
+                expense=expense,
+                user_owed_id=split_data['user_owed_id'],
+                amount_owed=split_data['amount_owed']
+            )
+            
+        return expense
+
+
+class BillGroupSerializer(serializers.ModelSerializer):
+    """
+    Serializer for a list of BillGroups.
+    """
+    members = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=User.objects.all(),
+        required=False # Not required, as we'll add the creator automatically
+    )
+    
+    # We add a read-only field to *show* the names
+    member_names = serializers.StringRelatedField(many=True, read_only=True, source='members')
+    
+    class Meta:
+        model = BillGroup
+        fields = ['id', 'name', 'members', 'member_names', 'created_at']
+        read_only_fields = ['member_names']
+
+
+class BillGroupDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer for one BillGroup, showing its members and expenses.
+    """
+    # Use our new read-only 'member_names' field
+    member_names = serializers.StringRelatedField(many=True, read_only=True, source='members')
+    
+    # Show all expenses, nested, using the ExpenseSerializer
+    expenses = ExpenseSerializer(many=True, read_only=True) 
+
+    class Meta:
+        model = BillGroup
+        fields = ['id', 'name', 'member_names', 'created_at', 'expenses']

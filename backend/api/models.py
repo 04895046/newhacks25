@@ -177,3 +177,61 @@ class ItineraryItem(models.Model):
         for item in items_to_shift:
             item.order = item.order - 1
             item.save()
+
+class BillGroup(models.Model):
+    """
+    Represents a group of users sharing bills.
+    e.g., "NYC Trip Crew", "Apartment Roommates"
+    """
+    name = models.CharField(max_length=100)
+    members = models.ManyToManyField(User, related_name="bill_groups")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+class Expense(models.Model):
+    """
+    Represents a single bill or transaction.
+    e.g., "Dinner at Joe's Pizza"
+    """
+    SPLIT_TYPES = [
+        ('E', 'Evenly'),
+        ('M', 'Manually'),
+        ('I', 'Itemized'), # Stored as 'Manually' but flagged for client
+    ]
+
+    group = models.ForeignKey(BillGroup, on_delete=models.CASCADE, related_name="expenses")
+    description = models.CharField(max_length=255)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # The user who paid the bill
+    payer = models.ForeignKey(User, on_delete=models.PROTECT, related_name="paid_expenses")
+    
+    date = models.DateTimeField(auto_now_add=True)
+    split_type = models.CharField(max_length=1, choices=SPLIT_TYPES, default='E')
+
+    # --- For the OCR / Itemized Flow ---
+    # The backend just *stores* this data for proof. 
+    # The Android app will do the OCR and calculation.
+    receipt_image = models.URLField(blank=True, null=True) # Optional: URL to receipt image
+    item_data_json = models.TextField(blank=True, null=True) # Optional: JSON string of items
+
+    def __str__(self):
+        return f"{self.description} (${self.total_amount})"
+
+class ExpenseSplit(models.Model):
+    """
+    The core of the ledger. This links an Expense to a User and
+    records how much that user *owes* for that expense.
+    """
+    expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="splits")
+    user_owed = models.ForeignKey(User, on_delete=models.PROTECT, related_name="owed_splits")
+    amount_owed = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        # A user can only have one split entry per expense
+        unique_together = ('expense', 'user_owed')
+
+    def __str__(self):
+        return f"{self.user_owed.username} owes ${self.amount_owed} for {self.expense.description}"

@@ -14,6 +14,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
+
 # Helper function to convert string environment variables to boolean
 def get_bool_env(var_name, default=False):
     """Convert environment variable to boolean"""
@@ -23,8 +24,10 @@ def get_bool_env(var_name, default=False):
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from .env file
 load_dotenv(BASE_DIR / '.env')
+
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+# Load environment variables from .env file
 
 
 # Quick-start development settings - unsuitable for production
