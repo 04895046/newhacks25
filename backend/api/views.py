@@ -305,6 +305,91 @@ class BillGroupViewSet(viewsets.ModelViewSet):
         ]
 
         return Response(final_balances)
+    
+    @action(detail=True, methods=['get'])
+    def settlements(self, request, pk=None):
+        """
+        CUSTOM ACTION: /api/groups/<id>/settlements/
+        Calculates the optimal settlement plan - who owes whom.
+        Uses a greedy algorithm to minimize the number of transactions.
+        
+        Returns:
+        [
+            {"from": "bob", "to": "alice", "amount": "30.00"},
+            {"from": "charlie", "to": "alice", "amount": "20.00"}
+        ]
+        """
+        group = self.get_object()
+        
+        # Step 1: Calculate net balances for each member (same as balances endpoint)
+        total_paid = group.expenses.filter(group=group).values(
+            'payer__username'
+        ).annotate(
+            paid=Sum('total_amount')
+        ).order_by()
+
+        total_owed = ExpenseSplit.objects.filter(expense__group=group).values(
+            'user_owed__username'
+        ).annotate(
+            owed=Sum('amount_owed')
+        ).order_by()
+
+        balances = {}
+        for member in group.members.all():
+            balances[member.username] = decimal.Decimal('0.00')
+
+        for paid_data in total_paid:
+            balances[paid_data['payer__username']] += paid_data['paid']
+            
+        for owed_data in total_owed:
+            balances[owed_data['user_owed__username']] -= owed_data['owed']
+        
+        # Step 2: Separate creditors (positive balance) and debtors (negative balance)
+        creditors = []  # People who are owed money
+        debtors = []    # People who owe money
+        
+        for username, balance in balances.items():
+            if balance > decimal.Decimal('0.01'):  # Use small epsilon for floating point comparison
+                creditors.append({"username": username, "amount": balance})
+            elif balance < decimal.Decimal('-0.01'):
+                debtors.append({"username": username, "amount": abs(balance)})
+        
+        # Step 3: Match debtors to creditors using greedy algorithm
+        settlements = []
+        
+        # Sort by amount (largest first) for better distribution
+        creditors.sort(key=lambda x: x['amount'], reverse=True)
+        debtors.sort(key=lambda x: x['amount'], reverse=True)
+        
+        i = 0  # creditor index
+        j = 0  # debtor index
+        
+        while i < len(creditors) and j < len(debtors):
+            creditor = creditors[i]
+            debtor = debtors[j]
+            
+            # Calculate the settlement amount (minimum of what's owed and what's due)
+            settlement_amount = min(creditor['amount'], debtor['amount'])
+            
+            # Only record transactions that are meaningful (> $0.01)
+            if settlement_amount > decimal.Decimal('0.01'):
+                settlements.append({
+                    "from": debtor['username'],
+                    "to": creditor['username'],
+                    "amount": f"{settlement_amount:.2f}"
+                })
+            
+            # Update remaining amounts
+            creditor['amount'] -= settlement_amount
+            debtor['amount'] -= settlement_amount
+            
+            # Move to next creditor/debtor if current one is settled
+            if creditor['amount'] < decimal.Decimal('0.01'):
+                i += 1
+            if debtor['amount'] < decimal.Decimal('0.01'):
+                j += 1
+        
+        return Response(settlements)
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):
