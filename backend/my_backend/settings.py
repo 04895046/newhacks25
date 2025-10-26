@@ -168,7 +168,10 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
     "http://localhost:8000",
     # Add your deployed frontend URL here
+    "https://evenonvodkathiswill.work",  # Your production domain
+    "https://www.evenonvodkathiswill.work",  # With www prefix
 ]
+
 
 # Allow credentials (cookies, authorization headers, etc.)
 CORS_ALLOW_CREDENTIALS = True
@@ -221,6 +224,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5174",
     "http://localhost:8080",
     "http://localhost:8000",
+    "https://evenonvodkathiswill.work",  # Your production domain
+    "https://www.evenonvodkathiswill.work",  # With www prefix
 ]
 
 # For Token authentication, CSRF is not needed for API endpoints
@@ -234,7 +239,6 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = get_bool_env('SECURE_HSTS_INCLUDE_SUBDOMAINS', 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Additional security settings for production
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+# if not DEBUG:
+#     SECURE_SSL_REDIRECT = True
+#     SESSION_COOKIE_SECURE = True
