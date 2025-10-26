@@ -317,7 +317,7 @@ def get_travel_ratings_list(destinations: list[str]):
         # 5. Make the API call, passing the prompt_text string directly as contents
         try:
             response = client.models.generate_content(
-                model='gemini-2.5-pro',
+                model='gemini-2.5-flash',
                 contents=prompt_text,
                 config=config,
             )
@@ -385,7 +385,7 @@ def get_travel_ratings(destination: str):
     # 6. Make the API call
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-pro',
+            model='gemini-2.5-flash',
             contents=prompt_text,
             config=config,
         )
@@ -456,13 +456,14 @@ def generate_structured_itinerary(currLocation: str, destRegion: str, details: s
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=ITINERARY_SCHEMA,
+        # tools=[{"googleSearch": {}}, {"googleMaps": {}}],
     )
 
     print(f"\n--- API Call: Itinerary to {destRegion} ---")
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-pro',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=config,
         )
@@ -478,6 +479,7 @@ def generate_structured_itinerary(currLocation: str, destRegion: str, details: s
         return None
 
 
+
 # --- Example Usage ---
 if __name__ == "__main__":
     load_dotenv()
@@ -489,4 +491,4 @@ if __name__ == "__main__":
         destRegion = "Erbil"
         details = "A 2-day itinerary focusing on general tourist attractions."
         # generate_structured_itinerary(currLocation, destRegion, details)
-        generate_structured_itinerary(currLocation, "Toronto", details)
+        generate_structured_itinerary(currLocation, "Hamilton, Ontario", details)
