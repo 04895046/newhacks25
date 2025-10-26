@@ -75,7 +75,6 @@ export default function GlobePanel({ onSelectCountry }) {
       const [lng, lat] = centroid;
       globeRef.current.pointOfView({ lat, lng, altitude: 1.5 }, 1000);
     }
-    console.log(target);
   };
 
   // Handle country search
