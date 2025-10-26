@@ -13,7 +13,7 @@ load_dotenv()
 if not os.getenv("GEMINI_API_KEY"):
     raise ValueError("GEMINI_API_KEY environment variable not set")
 
-client = genai.Client(api_key=os.getenv("API_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
@@ -24,7 +24,7 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
         preferences: Dictionary containing destination, currentLocation, tripLength, budget
     """
     return f"""
-    You are an expert travel planner. Create a detailed travel itinerary based on the following details.
+    You are an expert travel planner. Create a detailed travel itinerary based on the following preferences.
 
     IMPORTANT: Analyze the distance between the current location and destination:
     - For SHORT regional trips (same city, nearby cities within 2-3 hours by train/car): DO NOT include flights. Use "flightInfo": null
@@ -33,15 +33,79 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
 
     Your response MUST be a single, valid JSON object using DOUBLE QUOTES for all strings. Do not include any text, explanation, or markdown formatting before or after the JSON object.
 
-    Details:
+    Preferences:
     - Destination: {preferences['destination']}
     - Current Location: {preferences['currentLocation']}
-    - Trip Length: {preferences['tripLength']}
-    - Budget: {preferences['budget']}
-    - Preferences: {preferences['preferences']}
+    - Trip Length: {preferences['tripLength']} days
+    - Budget: {preferences['budget']} canadian dollars
 
     The JSON object must follow this exact structure (USE DOUBLE QUOTES ONLY):
+    {{
+      "tripTitle": "A creative and exciting title for the trip to {preferences['destination']}",
+      "summary": "A brief, engaging summary of the trip.",
+      "flightInfo": {{
+        "departure": {{
+            "airline": "Airline Name",
+            "flightNumber": "Flight Number",
+            "departureAirport": "Airport Code/Name",
+            "arrivalAirport": "Airport Code/Name",
+            "departureTime": "YYYY-MM-DDTHH:MM:SSZ",
+            "arrivalTime": "YYYY-MM-DDTHH:MM:SSZ",
+            "duration": "Xh Ym",
+            "departureCoordinates": {{"latitude": float, "longitude": float}},
+            "arrivalCoordinates": {{"latitude": float, "longitude": float}}
+        }},
+        "return": {{
+            "airline": "Airline Name",
+            "flightNumber": "Flight Number",
+            "departureAirport": "Airport Code/Name",
+            "arrivalAirport": "Airport Code/Name",
+            "departureTime": "YYYY-MM-DDTHH:MM:SSZ",
+            "arrivalTime": "YYYY-MM-DDTHH:MM:SSZ",
+            "duration": "Xh Ym",
+            "departureCoordinates": {{"latitude": float, "longitude": float}},
+            "arrivalCoordinates": {{"latitude": float, "longitude": float}}
+        }},
+        "price": "Estimated price for round trip (e.g., ~$1200 USD)",
+        "bookingLink": "A URL to a flight search engine like Google Flights with the search pre-filled."
+      }},
+      "dailyPlan": [
+        {{
+          "day": 1,
 
+          "activities": [
+            {{
+              "duration": "Duration of the activity, in hours, float.",
+              "description": "Detailed description of the activity.",
+              "name": "Specific name and address of the location.",
+              "location": "Coordinates of the activity, two floats.",
+              "description": "Additional practical information.",
+              "price": "Price in the local currency, integer.",
+              "bookingLink": "An optional URL for booking tickets or reservations if available."
+            }},
+            {{
+              "type": "transport",
+              "transportationType": "transportation method type",
+              "startPoint": "Name and address of starting location",
+              "endPoint": "Name and address of ending location",
+              "startCoordinates": {{"latitude": float, "longitude": float}},
+              "endCoordinates": {{"latitude": float, "longitude": float}},
+              "duration": float,
+              "price": integer,
+              "description": "Brief description of the journey"
+            }},
+            {{
+              "duration": float,
+              "description": "Another activity description.",
+              "name": "Another specific location name and address.",
+              "coordinates": {{"latitude": float, "longitude": float}},
+              "price": integer,
+              "bookingLink": null
+            }}
+          ]
+        }}
+      ]
+    }}
 
     CRITICAL RULES:
     1. USE DOUBLE QUOTES FOR ALL JSON STRINGS - NO SINGLE QUOTES
@@ -66,8 +130,6 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
     12. Use your knowledge, grounded by Google Search and Maps, to provide realistic and high-quality suggestions for locations, activities, restaurants, and transportation options.
     13. Include realistic prices in the local currency for all transportation and activities.
     14. ENSURE ALL JSON USES DOUBLE QUOTES - this is critical for proper parsing
-    15. Do not exceed the user's budget if possible. Keep track of this by summing the costs of the trip.
-    16. Consider the user's additional preferences.
   """
 
 
@@ -233,12 +295,46 @@ def generate_itinerary(
     except ValueError as e:
         print(f"Warning: Itinerary validation failed: {e}")
 
-    # Extract grounding chunks
+    # Extract grounding chunks and convert to JSON-serializable format
     grounding_chunks = []
     if response.candidates and len(response.candidates) > 0:
         candidate = response.candidates[0]
         if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
-            grounding_chunks = candidate.grounding_metadata.grounding_chunks or []
+            raw_chunks = candidate.grounding_metadata.grounding_chunks or []
+            
+            # Convert GroundingChunk objects to dictionaries
+            for chunk in raw_chunks:
+                chunk_dict = None
+                
+                # Handle web sources
+                if hasattr(chunk, 'web') and chunk.web:
+                    chunk_dict = {
+                        'type': 'web',
+                        'uri': getattr(chunk.web, 'uri', None),
+                        'title': getattr(chunk.web, 'title', None)
+                    }
+                
+                # Handle Google Maps sources
+                elif hasattr(chunk, 'maps') and chunk.maps:
+                    chunk_dict = {
+                        'type': 'maps',
+                        'place_id': getattr(chunk.maps, 'place_id', None),
+                        'title': getattr(chunk.maps, 'title', None),
+                        'uri': getattr(chunk.maps, 'uri', None)
+                    }
+                
+                # Handle retrieved context (Google Search snippets)
+                elif hasattr(chunk, 'retrieved_context') and chunk.retrieved_context:
+                    chunk_dict = {
+                        'type': 'search',
+                        'text': getattr(chunk.retrieved_context, 'text', None),
+                        'title': getattr(chunk.retrieved_context, 'title', None),
+                        'uri': getattr(chunk.retrieved_context, 'uri', None)
+                    }
+                
+                # Only add if we got valid data
+                if chunk_dict and any(chunk_dict.get(k) for k in ['uri', 'title', 'text']):
+                    grounding_chunks.append(chunk_dict)
 
     # Ensure the returned itinerary is properly formatted with double quotes
     # By re-serializing with json.dumps and ensure_ascii=False
@@ -247,8 +343,27 @@ def generate_itinerary(
     return {
         'itinerary': itinerary,
         'itineraryJson': itinerary_json_str,  # Properly formatted JSON string
-        'groundingChunks': grounding_chunks
+        'groundingChunks': grounding_chunks  # Now properly serialized
     }
+
+
+def start_chat(initial_context: str):
+    """
+    Start a chat session with the given initial context.
+
+    Args:
+        initial_context: System instruction for the chat
+
+    Returns:
+        Chat session object
+    """
+    return client.chats.create(
+        model='gemini-2.5-flash',
+        config=types.GenerateContentConfig(
+            system_instruction=initial_context
+        )
+    )
+
 
 def calculate_total_transport_cost(itinerary: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -333,6 +448,6 @@ def get_daily_summary(itinerary: Dict[str, Any], day: int) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     preferences = {"destination": "Vancouver", "tripLength": "2 days", "budget": "500",
-                   "currentLocation": {"latitude": 43.0, "longitude": -79.0}, "preferences": "natural hikes"}
+                   "currentLocation": {"latitude": 43.0, "longitude": 79.0}}
     currentLocation = {"latitude": 43.0, "longitude": -79.0}
     print(generate_itinerary(preferences, currentLocation))

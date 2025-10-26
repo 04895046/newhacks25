@@ -1,0 +1,3 @@
+[submodule "mobile"]
+	path = mobile
+	url = https://github.com/Peter-Hu12138/GroupLedger
