@@ -12,6 +12,13 @@ class Itinerary(models.Model):
     region = models.CharField(max_length=255, blank=True, null=True, help_text="e.g., 'Toronto', 'Paris'")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # NEW: Store the entire AI-generated JSON blob
+    ai_generated_data = models.JSONField(
+        null=True, 
+        blank=True, 
+        help_text="Complete AI-generated itinerary JSON from Gemini API"
+    )
 
     class Meta:
         verbose_name_plural = "Itineraries"

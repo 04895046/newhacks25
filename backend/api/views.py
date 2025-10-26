@@ -124,78 +124,69 @@ class ItineraryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def generate(self, request):
         """
-        CUSTOM API ENDPOINT for ML-powered itinerary generation.
-        This corresponds to: "select region" + "input detailed needs" + "generate itinerary..."
+        AI-powered itinerary generation using Gemini.
         
-        Frontend sends:
-        POST /api/itineraries/generate/
-        Body: {
-            "region": "Toronto",
-            "needs": "3 day trip, love museums and food"
+        Request body:
+        {
+            "destination": "Downtown Toronto",
+            "currentLocation": {"latitude": 43.0, "longitude": -79.0},
+            "tripLength": "1 day",
+            "budget": "200"
         }
         
-        Backend returns: The newly created itinerary with all items
+        Returns: Complete itinerary with AI-generated JSON stored.
         """
-        region = request.data.get('region')
-        needs = request.data.get('needs')
-
-        if not region or not needs:
+        # Validate required fields
+        destination = request.data.get('destination')
+        current_location = request.data.get('currentLocation')
+        trip_length = request.data.get('tripLength')
+        budget = request.data.get('budget')
+        
+        if not destination:
             return Response(
-                {"error": "Both 'region' and 'needs' are required."},
+                {"error": "Missing required field: 'destination'"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        # ============================================
-        # TODO: INTEGRATE YOUR ML MODEL HERE
-        # ============================================
-        # Replace the dummy data below with your actual ML call:
-        # from your_ml_script import call_ml_agent
-        # generated_data = call_ml_agent(region, needs)
-        #
-        # Expected format:
-        # generated_data = [
-        #     {"desc": "Visit CN Tower", "loc": "CN Tower", "order": 0},
-        #     {"desc": "Visit ROM", "loc": "Royal Ontario Museum", "order": 1},
-        # ]
-        # ============================================
         
-        # Dummy data for hackathon testing
-        generated_data = [
-            {
-                "desc": f"AI Generated: Explore {region} downtown", 
-                "loc": f"{region} City Center", 
-                "order": 0
-            },
-            {
-                "desc": f"AI Generated: Visit a famous landmark in {region}", 
-                "loc": "Famous Landmark", 
-                "order": 1
-            },
-            {
-                "desc": f"AI Generated: Enjoy local cuisine", 
-                "loc": "Local Restaurant", 
-                "order": 2
-            },
-        ]
-
-        # Create the Itinerary and its items in the database
-        new_itinerary = Itinerary.objects.create(
-            owner=request.user, 
-            title=f"AI Trip to {region}",
-            region=region
-        )
-
-        for item_data in generated_data:
-            ItineraryItem.objects.create(
-                itinerary=new_itinerary,
-                description=item_data['desc'],
-                location_name=item_data['loc'],
-                order=item_data['order']
+        # Build preferences with defaults
+        preferences = {
+            "destination": destination,
+            "currentLocation": current_location or {"latitude": 43.0, "longitude": -79.0},
+            "tripLength": trip_length or '1 day',
+            "budget": budget or '500'
+        }
+        location = preferences.get('currentLocation')
+        
+        try:
+            # Import the AI generation function
+            from .genaiitinerary import generate_itinerary
+            
+            # Call AI generation
+            result = generate_itinerary(preferences, location)
+            ai_itinerary = result.get('itinerary', {})
+            
+            # Create itinerary with the ENTIRE JSON stored
+            new_itinerary = Itinerary.objects.create(
+                owner=request.user,
+                title=ai_itinerary.get('tripTitle', f"Trip to {preferences['destination']}"),
+                region=preferences['destination'],
+                ai_generated_data=result  # Store the complete AI response
             )
-        
-        # Send the newly created itinerary back to the frontend
-        serializer = ItineraryDetailSerializer(new_itinerary)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+            # Return the complete data
+            serializer = ItineraryDetailSerializer(new_itinerary)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except ImportError:
+            return Response(
+                {'error': 'AI generation module not available. Please ensure genaiitinerary.py is in the api folder.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to generate itinerary: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class ItineraryItemViewSet(viewsets.ModelViewSet):

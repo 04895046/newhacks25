@@ -13,7 +13,7 @@ load_dotenv()
 if not os.getenv("GEMINI_API_KEY"):
     raise ValueError("GEMINI_API_KEY environment variable not set")
 
-client = genai.Client(api_key=os.getenv("API_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
@@ -37,7 +37,7 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
     - Destination: {preferences['destination']}
     - Current Location: {preferences['currentLocation']}
     - Trip Length: {preferences['tripLength']} days
-    - Budget: {preferences['budget']}
+    - Budget: {preferences['budget']} canadian dollars
 
     The JSON object must follow this exact structure (USE DOUBLE QUOTES ONLY):
     {{
@@ -295,12 +295,46 @@ def generate_itinerary(
     except ValueError as e:
         print(f"Warning: Itinerary validation failed: {e}")
 
-    # Extract grounding chunks
+    # Extract grounding chunks and convert to JSON-serializable format
     grounding_chunks = []
     if response.candidates and len(response.candidates) > 0:
         candidate = response.candidates[0]
         if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
-            grounding_chunks = candidate.grounding_metadata.grounding_chunks or []
+            raw_chunks = candidate.grounding_metadata.grounding_chunks or []
+            
+            # Convert GroundingChunk objects to dictionaries
+            for chunk in raw_chunks:
+                chunk_dict = None
+                
+                # Handle web sources
+                if hasattr(chunk, 'web') and chunk.web:
+                    chunk_dict = {
+                        'type': 'web',
+                        'uri': getattr(chunk.web, 'uri', None),
+                        'title': getattr(chunk.web, 'title', None)
+                    }
+                
+                # Handle Google Maps sources
+                elif hasattr(chunk, 'maps') and chunk.maps:
+                    chunk_dict = {
+                        'type': 'maps',
+                        'place_id': getattr(chunk.maps, 'place_id', None),
+                        'title': getattr(chunk.maps, 'title', None),
+                        'uri': getattr(chunk.maps, 'uri', None)
+                    }
+                
+                # Handle retrieved context (Google Search snippets)
+                elif hasattr(chunk, 'retrieved_context') and chunk.retrieved_context:
+                    chunk_dict = {
+                        'type': 'search',
+                        'text': getattr(chunk.retrieved_context, 'text', None),
+                        'title': getattr(chunk.retrieved_context, 'title', None),
+                        'uri': getattr(chunk.retrieved_context, 'uri', None)
+                    }
+                
+                # Only add if we got valid data
+                if chunk_dict and any(chunk_dict.get(k) for k in ['uri', 'title', 'text']):
+                    grounding_chunks.append(chunk_dict)
 
     # Ensure the returned itinerary is properly formatted with double quotes
     # By re-serializing with json.dumps and ensure_ascii=False
@@ -309,7 +343,7 @@ def generate_itinerary(
     return {
         'itinerary': itinerary,
         'itineraryJson': itinerary_json_str,  # Properly formatted JSON string
-        'groundingChunks': grounding_chunks
+        'groundingChunks': grounding_chunks  # Now properly serialized
     }
 
 

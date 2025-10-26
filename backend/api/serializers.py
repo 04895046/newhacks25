@@ -56,14 +56,19 @@ class ItineraryDetailSerializer(serializers.ModelSerializer):
     """
     Detailed serializer for a single itinerary.
     This "nests" the items inside the itinerary.
-    This is how you send the whole list at once to the frontend.
+    Returns items for manual editing OR ai_generated_data for AI-generated itineraries.
     """
     items = ItineraryItemSerializer(many=True, read_only=True)
     owner_username = serializers.CharField(source='owner.username', read_only=True)
 
     class Meta:
         model = Itinerary
-        fields = ['id', 'owner', 'owner_username', 'title', 'region', 'created_at', 'updated_at', 'items']
+        fields = [
+            'id', 'owner', 'owner_username', 'title', 'region', 
+            'created_at', 'updated_at', 
+            'items',  # For future manual editing
+            'ai_generated_data'  # The full AI JSON
+        ]
         read_only_fields = ['owner', 'created_at', 'updated_at']
 
 
