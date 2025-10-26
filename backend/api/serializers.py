@@ -96,6 +96,19 @@ class ExpenseSplitSerializer(serializers.ModelSerializer):
         fields = ['user_owed_id', 'amount_owed']
 
 
+class ExpenseSplitReadSerializer(serializers.ModelSerializer):
+    """
+    Serializer for *reading* split information.
+    Includes both user_owed ID and username for display.
+    """
+    user_owed = serializers.IntegerField(source='user_owed.id', read_only=True)
+    user_owed_username = serializers.CharField(source='user_owed.username', read_only=True)
+    
+    class Meta:
+        model = ExpenseSplit
+        fields = ['user_owed', 'user_owed_username', 'amount_owed']
+
+
 class ExpenseSerializer(serializers.ModelSerializer):
     """
     Serializer for creating a new Expense.
@@ -108,7 +121,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
         fields = [
-            'id', 'group', 'description', 'total_amount', 'payer_id', 
+            'id', 'group', 'description', 'total_amount', 'date', 'payer_id', 
             'split_type', 'receipt_image', 'item_data_json', 'splits'
         ]
 
@@ -191,6 +204,24 @@ class ExpenseSerializer(serializers.ModelSerializer):
         return expense
 
 
+class ExpenseReadSerializer(serializers.ModelSerializer):
+    """
+    Serializer for *reading* expense information in GET responses.
+    Includes payer info, date, and readable splits.
+    """
+    payer = serializers.IntegerField(source='payer.id', read_only=True)
+    payer_username = serializers.CharField(source='payer.username', read_only=True)
+    splits_read = ExpenseSplitReadSerializer(source='splits', many=True, read_only=True)
+    
+    class Meta:
+        model = Expense
+        fields = [
+            'id', 'group', 'description', 'total_amount', 'date',
+            'payer', 'payer_username', 'split_type', 'receipt_image', 
+            'item_data_json', 'splits_read'
+        ]
+
+
 class BillGroupSerializer(serializers.ModelSerializer):
     """
     Serializer for a list of BillGroups.
@@ -212,8 +243,8 @@ class BillGroupDetailSerializer(serializers.ModelSerializer):
     # Use the simple serializer here too
     members = UserSimpleSerializer(many=True, read_only=True)
     
-    # Show all expenses, nested, using the ExpenseSerializer
-    expenses = ExpenseSerializer(many=True, read_only=True) 
+    # Show all expenses with full details including payer info and splits
+    expenses = ExpenseReadSerializer(many=True, read_only=True) 
 
     class Meta:
         model = BillGroup

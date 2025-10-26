@@ -14,7 +14,7 @@ from .models import (
 from .serializers import (
     UserSerializer, UserSimpleSerializer, ItineraryDetailSerializer, ItineraryListSerializer,
     ItineraryItemSerializer, BillGroupSerializer, BillGroupDetailSerializer,
-    ExpenseSerializer # Add new serializers
+    ExpenseSerializer, ExpenseReadSerializer # Add new serializers
 )
 from django.db.models import Sum, Q, F, DecimalField
 import decimal, requests, json
@@ -309,14 +309,23 @@ class BillGroupViewSet(viewsets.ModelViewSet):
 
 class ExpenseViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for creating Expenses.
+    API endpoint for creating and viewing Expenses.
+    Uses different serializers for read vs write operations.
     """
-    serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         # Only list expenses for groups the user is in
         return Expense.objects.filter(group__members=self.request.user).order_by('-date')
+    
+    def get_serializer_class(self):
+        """
+        Use ExpenseReadSerializer for GET requests (list, retrieve)
+        Use ExpenseSerializer for POST/PUT/PATCH requests (create, update)
+        """
+        if self.action in ['list', 'retrieve']:
+            return ExpenseReadSerializer
+        return ExpenseSerializer
     
     def get_serializer_context(self):
         """
