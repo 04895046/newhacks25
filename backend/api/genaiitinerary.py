@@ -24,7 +24,7 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
         preferences: Dictionary containing destination, currentLocation, tripLength, budget
     """
     return f"""
-    You are an expert travel planner. Create a detailed travel itinerary based on the following preferences.
+    You are an expert travel planner. Create a detailed travel itinerary based on the following details.
 
     IMPORTANT: Analyze the distance between the current location and destination:
     - For SHORT regional trips (same city, nearby cities within 2-3 hours by train/car): DO NOT include flights. Use "flightInfo": null
@@ -33,11 +33,12 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
 
     Your response MUST be a single, valid JSON object using DOUBLE QUOTES for all strings. Do not include any text, explanation, or markdown formatting before or after the JSON object.
 
-    Preferences:
+    Details:
     - Destination: {preferences['destination']}
     - Current Location: {preferences['currentLocation']}
-    - Trip Length: {preferences['tripLength']} days
+    - Trip Length: {preferences['tripLength']}
     - Budget: {preferences['budget']}
+    - Preferences: {preferences['preferences']}
 
     The JSON object must follow this exact structure (USE DOUBLE QUOTES ONLY):
     {{
@@ -130,6 +131,8 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
     12. Use your knowledge, grounded by Google Search and Maps, to provide realistic and high-quality suggestions for locations, activities, restaurants, and transportation options.
     13. Include realistic prices in the local currency for all transportation and activities.
     14. ENSURE ALL JSON USES DOUBLE QUOTES - this is critical for proper parsing
+    15. Do not exceed the user's budget if possible. Keep track of this by summing the costs of the trip.
+    16. Consider the user's additional preferences.
   """
 
 
@@ -311,25 +314,6 @@ def generate_itinerary(
         'itineraryJson': itinerary_json_str,  # Properly formatted JSON string
         'groundingChunks': grounding_chunks
     }
-
-
-def start_chat(initial_context: str):
-    """
-    Start a chat session with the given initial context.
-
-    Args:
-        initial_context: System instruction for the chat
-
-    Returns:
-        Chat session object
-    """
-    return client.chats.create(
-        model='gemini-2.5-flash',
-        config=types.GenerateContentConfig(
-            system_instruction=initial_context
-        )
-    )
-
 
 def calculate_total_transport_cost(itinerary: Dict[str, Any]) -> Dict[str, Any]:
     """
