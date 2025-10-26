@@ -1,11 +1,13 @@
 import json
 import os
+import re
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-# 1. Define the final, updated structured response schema
+# --- 1. SCHEMAS (Updated ITINERARY_SCHEMA to match user's request) ---
+
 ITINERARY_SCHEMA = {
     "type": "array",
     "description": "A detailed, ordered itinerary composed of alternating destination and journey segments. The FIRST and LAST segments MAY be a JOURNEY segment for travel to and from the starting city, but must be omitted if the starting city is the same as the destination city.",
@@ -41,7 +43,7 @@ ITINERARY_SCHEMA = {
                             "longitude": {
                                 "type": "number",
                                 "format": "float",
-                                "description": "The longitude (e.g., 2.3376)."
+                                "description": "The longitude (e.3376)."
                             }
                         },
                         "required": [
@@ -49,41 +51,43 @@ ITINERARY_SCHEMA = {
                             "longitude"
                         ]
                     },
+                    # Additional fields added to destination_details to match JS supplemental needs
                     "address": {
                         "type": "string",
-                        "description": "The physical street address of the destination."
+                        "description": "The full physical street address."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "A concise summary of the location and its fame."
                     },
                     "price": {
                         "type": "integer",
                         "description": "The estimated price of admission or visit, represented as an integer (e.g., 15, 0 for free). Omit currency symbols."
                     },
-                    "description": {
-                        "type": "string",
-                        "description": "A brief summary of the location."
-                    },
                     "visit_duration_hours": {
                         "type": "number",
                         "format": "float",
                         "description": "The estimated time needed for the visit, in hours (e.g., 2.5)."
+                    },
+                    "bookingLink": {
+                        "type": "string",
+                        "description": "Use Google Search to find the official booking URL for this specific activity. If none exists, set to null."
                     }
                 },
                 "required": [
                     "location_name",
                     "location_coordinates",
-                    "address",
                     "price",
-                    "description",
-                    "visit_duration_hours"
+                    "visit_duration_hours",
+                    "address",  # Now required as it will be filled by a grounded model
+                    "description",  # Now required as it will be filled by a grounded model
+                    "bookingLink"
                 ]
             },
             "journey_details": {
                 "type": "object",
                 "description": "Details for a JOURNEY segment. Present only when segment_type is 'JOURNEY'.",
                 "properties": {
-                    "transport_type": {
-                        "type": "string",
-                        "description": "The method of transportation (e.g., 'Flight', 'Train', 'Car', 'Walk')."
-                    },
                     "start_point": {
                         "type": "string",
                         "description": "The name of the journey's origin (e.g., 'Toronto Pearson Airport')."
@@ -92,26 +96,36 @@ ITINERARY_SCHEMA = {
                         "type": "string",
                         "description": "The name of the journey's destination."
                     },
-                    "route_polyline": {
+                    "transport_type": {
                         "type": "string",
-                        "description": "An encoded polyline string from a map API representing the route path/curve."
-                    },
-                    "price": {
-                        "type": "integer",
-                        "description": "The estimated cost of the journey, represented as an integer (e.g., 500, 0 for free). Omit currency symbols."
+                        "description": "The method of transportation (e.g., Flight, Train, Car, Walk). If available, include a flight or train number."
                     },
                     "expected_duration_hours": {
                         "type": "number",
                         "format": "float",
-                        "description": "The estimated time needed for the journey, in hours (e.g., 8.5 for a flight, 0.25 for a 15-minute walk)."
+                        "description": "The expected duration in hours, as a float (e.g., 8.5, 0.25)."
+                    },
+                    "price": {
+                        "type": "integer",
+                        "description": "The estimated price of the journey in USD (e.g., 500, 0 for free)."
+                    },
+                    "route_polyline": {
+                        "type": "string",
+                        "description": "An encoded polyline string from a map API representing the route path/curve."
+                    },
+                    "bookingLink" : {
+                        "type": "string",
+                        "description": "Use Google Search to create a pre-filled Google Flights URL (or similar for other methods of transportation) for the specified route."
                     }
                 },
                 "required": [
-                    "transport_type",
                     "start_point",
                     "end_point",
-                    "price",
-                    "expected_duration_hours"
+                    "route_polyline",
+                    "transport_type",  # Now required as it will be filled by a grounded model
+                    "expected_duration_hours",  # Now required as it will be filled by a grounded model
+                    "price",  # Now required as it will be filled by a grounded model
+                    "bookingLink"
                 ]
             }
         },
@@ -265,75 +279,161 @@ TRAVEL_RATING_SCHEMA = {
     ]
 }
 
-def get_travel_ratings_list(destinations: list[str]):
-    """
-    Generates structured travel ratings for multiple destinations, enforcing source
-    constraints using search queries embedded in the user prompt.
 
-    Args:
-        destinations: A list of country or sub-national areas to rate.
+# --- 2. HELPER FUNCTIONS ---
+
+def _extract_attributions(response: types.GenerateContentResponse) -> list[dict]:
     """
+    Extracts web grounding attributions (URI and title) from a Gemini response.
+    """
+    attributions = []
+    if not response.candidates:
+        return attributions
+
+    candidate = response.candidates[0]
+
+    # Safely check for grounding_metadata and attributions
+    if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+
+        if (hasattr(candidate.grounding_metadata, 'grounding_chunks') and
+                candidate.grounding_metadata.grounding_chunks):
+
+            for chunk in candidate.grounding_metadata.grounding_chunks:
+                if chunk.web:
+                    attributions.append({
+                        "uri": chunk.web.uri,
+                        "title": chunk.web.title
+                    })
+                elif chunk.maps:
+                    attributions.append({
+                        "uri": chunk.maps.uri,
+                        "title": chunk.maps.title
+                    })
+        # Removed the diagnostic print here to keep the function clean,
+        # relying on the calling function to report success/failure.
+
+    return attributions
+
+
+def _extract_and_parse_json(text: str, schema_name: str) -> dict:
+    """
+    Extracts JSON wrapped in a markdown block (```json) from a text response.
+    """
+    json_regex = re.compile(r"```json\s*([\s\S]*?)\s*```", re.IGNORECASE)
+    match = json_regex.search(text)
+
+    if not match:
+        # Fallback for when the model skips the markdown wrapper
+        print(f"   [WARNING] Failed to find JSON markdown block. Attempting raw parse for {schema_name}.")
+        # Use the entire text as a fallback, trimming common pre/post-text
+        json_string = text.strip()
+    else:
+        json_string = match.group(1).strip()
+
+    if not json_string:
+        raise ValueError(f"Extracted JSON string is empty for {schema_name}.")
+
+    try:
+        return json.loads(json_string)
+    except json.JSONDecodeError as e:
+        print(f"   [ERROR] Failed to parse JSON for {schema_name}: {e}")
+        # Print the problematic string for debugging
+        print(f"   [ERROR] Problematic string: {json_string[:500]}...")
+        raise ValueError(f"Invalid JSON format for {schema_name}.")
+
+
+# --- 3. MAIN API HANDLER FUNCTIONS ---
+
+
+def get_travel_ratings_list(destinations: list[str], location: dict = None):
+    """
+    Generates structured travel ratings for multiple destinations using
+    flexible text output (JSON in markdown) to encourage grounding.
+    """
+    if not os.getenv("GEMINI_API_KEY"):
+        print("FATAL ERROR: GEMINI_API_KEY environment variable not found. Cannot run API call.")
+        return []
+
     try:
         client = genai.Client()
     except Exception as e:
         print(f"Error initializing Gemini client: {e}")
         return []
 
-    all_ratings = []  # List to store all results
+    all_ratings = []
 
-    # 2. Define the Prompt with all constraints and grounding instructions embedded
-    # This will be done *inside* the loop
-
-    # 3. Configure the generation request for JSON output and search grounding
+    # Configuration for text output with search tool
     config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        response_schema=TRAVEL_RATING_SCHEMA,
+        tools=[{"google_search": {}}],
+        # Tool config with geolocation context (same pattern as JS for future use)
+        tool_config={
+            "retrieval_config": {
+                "lat_lng": location
+            }
+        } if location else None
     )
 
-    # --- Loop through each destination ---
     for destination in destinations:
         prompt_text = f"""
         You are an expert travel analyst. Your task is to provide a comprehensive rating for the destination: {destination}.
+        Your final output MUST be a single JSON object that strictly follows the provided schema.
+
+        To ensure stability, wrap the JSON object in a single ````json` markdown block. DO NOT include any text, explanation, or markdown formatting outside of this block.
+
         STRICTLY follow these rules for populating the JSON schema:
 
-        1. For ALL fields ending in '_explanation', provide a short, distinct justification for the corresponding integer rating.
+        1. For ALL rating categories (cultural_historical, natural_beauty, relaxation, shopping, entertainment_nightlife, budget_friendliness), you MUST provide a nested JSON object containing:
+           - "value": An integer rating from 1 to 5.
+           - "explanation": A short string justification for the rating.
 
-        2. For the 'safety_status' field, you MUST provide only the concise status phrase from the following four, and ONLY these four, options. Select the most appropriate option based on the EXACT URL: https://travel.gc.ca/travelling/advisories.
-        The detailed reasoning MUST go into the 'safety_explanation' field. To find the correct status, use Google Search and specifically check the official travel advisory from travel.gc.ca for {destination}.
-            - "Take normal security precautions"
-            - "Exercise a high degree of caution"
-            - "Avoid non-essential travel"
-            - "Avoid all travel"
+        2. For the 'safety' field, you MUST provide a nested JSON object containing:
+           - "status": You MUST provide only the concise status phrase from the following four, and ONLY these four, options. Select the most appropriate option based on the EXACT URL: [https://travel.gc.ca/travelling/advisories](https://travel.gc.ca/travelling/advisories).
+                - "Take normal security precautions"
+                - "Exercise a high degree of caution"
+                - "Avoid non-essential travel"
+                - "Avoid all travel"
+           - "explanation": The detailed reasoning MUST go into this field.
 
-        3. For all other fields (the 1-5 ratings and explanations), you MUST ONLY use information from either https://travel.gc.ca/travelling/advisories or wikipedia.org. If you need context for cultural/natural/etc., prioritize Wikipedia.
+        To find the correct status for the 'safety.status' field, use Google Search and specifically check the official travel advisory from travel.gc.ca for {destination}.
 
-        4. Ensure all ratings are integers (1-5).
+        3. For all other fields (the 1-5 ratings and explanations), you MUST ONLY use information from either [https://travel.gc.ca/travelling/advisories](https://travel.gc.ca/travelling/advisories) or wikipedia.org. If you need context for cultural/natural/etc., prioritize Wikipedia.
+
+        4. Ensure all integer ratings are integers (1-5).
 
         Provide the travel rating and advisory data for the destination: {destination}.
         """
 
-        print(f"\n--- API Call: Travel Ratings for {destination} (No System Instruction) ---")
+        print(f"\n--- API Call: Travel Ratings for {destination} (Now using flexible JSON output) ---")
 
-        # 5. Make the API call, passing the prompt_text string directly as contents
         try:
             response = client.models.generate_content(
-                model='gemini-2.5-pro',
+                model='gemini-2.5-flash',
                 contents=prompt_text,
                 config=config,
             )
 
-            # 6. Process and display the structured response
+            # Use the new flexible extractor
+            parsed_json = _extract_and_parse_json(response.text, "Travel Rating")
+            attributions = _extract_attributions(response)
+
             print(f"\n--- Structured Travel Rating Response (JSON) for {destination} ---")
-            parsed_json = json.loads(response.text)
             print(json.dumps(parsed_json, indent=2))
+            print(f"--- Attributions Found: {len(attributions)} ---")
+            if attributions:
+                for attr in attributions:
+                    print(f"Title: {attr['title']} | URI: {attr['uri']}")
             print("------------------------------------------")
-            all_ratings.append(parsed_json)
+
+            all_ratings.append({
+                "rating_data": parsed_json,
+                "attributions": attributions
+            })
 
         except Exception as e:
             print(f"An error occurred during the API call for {destination}: {e}")
-            all_ratings.append(None)  # Add None on failure for this item
+            all_ratings.append({"rating_data": None, "attributions": []})
 
-    return all_ratings  # Return the list of results
+    return all_ratings
 
 def get_travel_ratings(destination: str):
     """
@@ -380,21 +480,21 @@ def get_travel_ratings(destination: str):
         response_schema=TRAVEL_RATING_SCHEMA,
     )
 
-    print(f"\n--- API Call: Travel Ratings for {destination} ---")
+    # print(f"\n--- API Call: Travel Ratings for {destination} ---")
 
     # 6. Make the API call
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-pro',
+            model='gemini-2.5-flash',
             contents=prompt_text,
             config=config,
         )
 
         # 6. Process and display the structured response
-        print("\n--- Structured Travel Rating Response (JSON) ---")
+        # print("\n--- Structured Travel Rating Response (JSON) ---")
         parsed_json = json.loads(response.text)
-        print(json.dumps(parsed_json, indent=2))
-        print("------------------------------------------")
+        print(json.dumps(parsed_json, indent=2) + ",")
+        # print("------------------------------------------")
 
         return parsed_json  # Return the data
 
@@ -403,20 +503,34 @@ def get_travel_ratings(destination: str):
         return None
 
 
-def generate_structured_itinerary(currLocation: str, destRegion: str, details: str):
-    """
-    Calls the Gemini API to generate a structured itinerary.
 
-    Args:
-        currLocation: The user's current city (e.g., 'Toronto').
-        destRegion: The main city to visit (e.g., 'Paris' or 'Toronto').
-        details: Specifics for the itinerary (e.g., '3 days, focus on art').
+def generate_structured_itinerary(currLocation: str, destRegion: str, details: str, location: dict = None):
+    """
+    Generates a full itinerary in a single, robust, grounded API call,
+    mimicking the successful JS configuration.
     """
     if not os.getenv("GEMINI_API_KEY"):
         print("FATAL ERROR: GEMINI_API_KEY environment variable not found. Cannot run API call.")
         return
 
-    # 2. Crafting a highly specific prompt to enforce all constraints
+    try:
+        client = genai.Client()
+    except Exception as e:
+        print(f"Error initializing Gemini client: {e}")
+        return
+
+    # --- Configuration: Use multiple tools and Geolocation Context (like JS) ---
+    config = types.GenerateContentConfig(
+        # Use both search and maps for enhanced grounding
+        tools=[{"google_search": {}}, {"google_maps": {}}],
+        # Pass the geolocation object if available
+        tool_config={
+            "retrieval_config": {
+                "lat_lng": location
+            }
+        } if location else None
+    )
+
     travel_segments_instruction = ""
     if currLocation.lower().strip() == destRegion.lower().strip():
         travel_segments_instruction = "The user is already in the destination city. DO NOT include any JOURNEY segments to or from the start city. The itinerary must only contain alternating DESTINATION and local JOURNEY segments."
@@ -426,67 +540,69 @@ def generate_structured_itinerary(currLocation: str, destRegion: str, details: s
         2. The last segment of the array MUST be a JOURNEY segment from the last destination back to {currLocation}.
         """
 
-    # 3. Explicitly instructing on the price and duration formats
-    format_instruction = """
-    CRITICAL FORMATTING RULES:
-    - All 'price' fields MUST be integers (e.g., 15, 500). Use 0 if the price is free.
-    - All journey and visit durations MUST be in 'hours' and represented as a float (e.g., 8.5, 0.25).
-    """
-
     prompt = f"""
     Create a detailed travel itinerary for a trip to {destRegion}.
-    The itinerary must follow the structured JSON schema and these rules:
+    Your final output MUST be a single JSON object that strictly follows the provided schema.
 
+    To ensure stability and maximize grounding, wrap the JSON object in a single ````json` markdown block. DO NOT include any text, explanation, or markdown formatting outside of this block.
+
+    Itinerary Rules:
     {travel_segments_instruction}
 
     All other segments within the array must alternate between DESTINATION and local JOURNEY segments within the city.
 
-    {format_instruction}
+    IMPORTANT: You MUST populate ALL required fields in the schema (location_name, coordinates, price, duration, address, description, etc.) using up-to-date, real-world data found through your available tools.
 
     Trip details: {details}.
+    
+    Ensure the number of objects in the array matches the trip length specified. 
+    Use your knowledge, grounded by Google Search and Maps, to provide realistic and high-quality suggestions for locations, activities, and restaurants.
     """
 
-    # Client initialization and API call logic
-    try:
-        client = genai.Client()
-    except Exception as e:
-        print(f"Error initializing Gemini client: {e}")
-        return
-
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        response_schema=ITINERARY_SCHEMA,
-    )
-
-    print(f"\n--- API Call: Itinerary to {destRegion} ---")
+    print(f"\n--- API Call: Generating Itinerary for {destRegion} (Single grounded call) ---")
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-pro',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=config,
         )
 
-        print("\n--- Structured Itinerary Response (JSON) ---")
-        parsed_json = json.loads(response.text)
-        print(json.dumps(parsed_json, indent=2))
-        print("------------------------------------------")
-        return parsed_json
+        # Use the new flexible extractor
+        final_itinerary = _extract_and_parse_json(response.text, "Itinerary")
+        total_attributions = _extract_attributions(response)
 
     except Exception as e:
-        print(f"An error occurred during the API call: {e}")
-        return None
+        print(f"An error occurred during Itinerary Generation: {e}")
+        return {"itinerary_data": None, "attributions": []}
+
+    # --- Final Output ---
+    print("\n--- FINAL STRUCTURED ITINERARY (Combined Steps) ---")
+    print(json.dumps(final_itinerary, indent=2))
+    print(f"--- Total Attributions Found: {len(total_attributions)} ---")
+    if total_attributions:
+        for attr in total_attributions:
+            print(f"Title: {attr['title']} | URI: {attr['uri']}")
+    print("------------------------------------------")
+
+    return {
+        "itinerary_data": final_itinerary,
+        "attributions": total_attributions
+    }
 
 
 # --- Example Usage ---
 if __name__ == "__main__":
     load_dotenv()
     if not os.getenv("GEMINI_API_KEY"):
-        print("\n GEMINI_API_KEY environment variable not found.")
+        print("\n WARNING: GEMINI_API_KEY environment variable not found.")
     else:
-        # Example demonstrating integer price (no currency) and float duration
+        # Example 2: Generate an Itinerary (Now uses single, grounded call with multiple tools)
         currLocation = "Toronto, Canada"
-        destRegion = "Erbil"
-        details = "A 2-day itinerary focusing on general tourist attractions."
-        # generate_structured_itinerary(currLocation, destRegion, details)
-        generate_structured_itinerary(currLocation, "Toronto", details)
+        destRegion = "Gros Morne, Newfoundland"
+        details = "A 3-day itinerary focusing on major hikes."
+        # Dummy location data to test geolocation context
+        user_location_context = {"latitude": 43.6532, "longitude": -79.3832}
+        print(f"\n\n\n--- RUNNING SINGLE-CALL GROUNDED ITINERARY GENERATION ---")
+        itinerary_result = generate_structured_itinerary(currLocation, destRegion, details,
+                                                         location=user_location_context)
