@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import ReactCountryFlag from "react-country-flag";
 import countries from "i18n-iso-countries";
 import enLocale from "i18n-iso-countries/langs/en.json";
@@ -21,6 +21,44 @@ function getAlpha2(countryName) {
 
 export default function CountryDetailsOverlay({ country, onClose }) {
   if (!country) return null;
+
+  const [ratings, setRatings] = useState({});
+
+  useEffect(() => {
+    async function fetchRatings() {
+      try {
+        const res = await fetch("https://evenonvodkathiswill.work/static/countryratings.json");
+        const data = await res.json();
+
+        const countryData = data.find(
+          (item) => item.destination_name.toLowerCase() === country.properties.name.toLowerCase()
+        );
+    
+        if (!countryData) {
+          console.warn(`No data found for ${country.properties.name}`);
+          setRatings({});
+          return;
+        }
+  
+        const fetchedRatings = {
+          cultural_historical: countryData.cultural_historical?.value ?? 0,
+          natural_beauty: countryData.natural_beauty?.value ?? 0,
+          relaxation: countryData.relaxation?.value ?? 0,
+          shopping: countryData.shopping?.value ?? 0,
+          budget_friendliness: countryData.budget_friendliness?.value ?? 0,
+        };
+  
+        console.log(fetchedRatings);
+        setRatings(fetchedRatings);
+      } 
+      catch (err) {
+        console.error("Failed to load ratings:", err);
+        setRatings({});
+      }
+    }
+  
+    fetchRatings();
+  }, [country]);
 
   return (
     <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
@@ -64,52 +102,28 @@ export default function CountryDetailsOverlay({ country, onClose }) {
           <div className="w-48 border-l border-gray-300 pl-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-3">Ratings</h3>
             <div className="space-y-3">
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">Rating 1</span>
-                  <span className="font-semibold">0/10</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: '0%' }}></div>
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">Rating 2</span>
-                  <span className="font-semibold">0/10</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: '0%' }}></div>
-                </div>
-              </div>
-                             <div>
-                 <div className="flex justify-between text-sm mb-1">
-                   <span className="text-gray-600">Rating 3</span>
-                   <span className="font-semibold">0/10</span>
-                 </div>
-                 <div className="w-full bg-gray-200 rounded-full h-2">
-                   <div className="bg-blue-600 h-2 rounded-full" style={{ width: '0%' }}></div>
-                 </div>
-               </div>
-               <div>
-                 <div className="flex justify-between text-sm mb-1">
-                   <span className="text-gray-600">Rating 4</span>
-                   <span className="font-semibold">0/10</span>
-                 </div>
-                 <div className="w-full bg-gray-200 rounded-full h-2">
-                   <div className="bg-blue-600 h-2 rounded-full" style={{ width: '0%' }}></div>
-                 </div>
-               </div>
-               <div>
-                 <div className="flex justify-between text-sm mb-1">
-                   <span className="text-gray-600">Rating 5</span>
-                   <span className="font-semibold">0/10</span>
-                 </div>
-                 <div className="w-full bg-gray-200 rounded-full h-2">
-                   <div className="bg-blue-600 h-2 rounded-full" style={{ width: '0%' }}></div>
-                 </div>
-               </div>
-             </div>
+              {[
+                { key: 'cultural_historical', label: 'Cultural' },
+                { key: 'natural_beauty', label: 'Natural' },
+                { key: 'relaxation', label: 'Relaxation' },
+                { key: 'shopping', label: 'Shopping' },
+                { key: 'budget_friendliness', label: 'Budget' }
+              ].map(({ key, label }) => {
+                const value = ratings[key] || 0;
+                const percentage = (value / 5) * 100;
+                return (
+                  <div key={key}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600">{label}</span>
+                      <span className="font-semibold">{value}/5</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${percentage}%` }}></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
                     </div>
         </div>
       </div>
