@@ -25,8 +25,13 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
     """
     return f"""
     You are an expert travel planner. Create a detailed travel itinerary based on the following preferences.
-    Based on the user's current location, if needed, find suitable round-trip flight options and include them in the "flightInfo" object. Use Google Search for up-to-date flight information.
-    Your response MUST be a single, valid JSON object. Do not include any text, explanation, or markdown formatting before or after the JSON object.
+
+    IMPORTANT: Analyze the distance between the current location and destination:
+    - For SHORT regional trips (same city, nearby cities within 2-3 hours by train/car): DO NOT include flights. Use "flightInfo": null
+    - For trips within the same country that can be reached by train/car in under 4 hours: DO NOT include flights. Use "flightInfo": null
+    - For LONG-DISTANCE international trips or cross-country trips: Include round-trip flight information using Google Search for up-to-date data
+
+    Your response MUST be a single, valid JSON object using DOUBLE QUOTES for all strings. Do not include any text, explanation, or markdown formatting before or after the JSON object.
 
     Preferences:
     - Destination: {preferences['destination']}
@@ -34,7 +39,7 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
     - Trip Length: {preferences['tripLength']} days
     - Budget: {preferences['budget']}
 
-    The JSON object must follow this exact structure:
+    The JSON object must follow this exact structure (USE DOUBLE QUOTES ONLY):
     {{
       "tripTitle": "A creative and exciting title for the trip to {preferences['destination']}",
       "summary": "A brief, engaging summary of the trip.",
@@ -102,11 +107,13 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
       ]
     }}
 
-    IMPORTANT RULES:
-    1. Include a transport segment between EVERY activity (unless they are at the exact same location).
-    2. Transport segments should have "type": "transport" to distinguish them from activity segments.
-    3. Each transport segment MUST include:
-       - transportationType: one of ["walk", "metro", "train", "bus", "taxi", "ferry", "tram", "bicycle", "car", "flight"]
+    CRITICAL RULES:
+    1. USE DOUBLE QUOTES FOR ALL JSON STRINGS - NO SINGLE QUOTES
+    2. For short regional trips (same city, nearby cities, or trips under 4 hours by train/car): Set "flightInfo": null and include the initial transport segment as the first activity on day 1
+    3. Include a transport segment between EVERY activity (unless they are at the exact same location).
+    4. Transport segments should have "type": "transport" to distinguish them from activity segments.
+    5. Each transport segment MUST include:
+       - transportationType: one of ["walk", "metro", "train", "bus", "taxi", "ferry", "tram", "bicycle", "car"]
        - startPoint: name and address of starting location (string)
        - endPoint: name and address of ending location (string)
        - startCoordinates: {{"latitude": float, "longitude": float}}
@@ -114,20 +121,22 @@ def build_itinerary_prompt(preferences: Dict[str, Any]) -> str:
        - duration: time in hours (float)
        - price: cost in local currency (integer, 0 for walking)
        - description: brief description of the journey
-    4. Activity segments should NOT have "type" field (or can have "type": "activity").
-    5. The startCoordinates of each transport segment should match the coordinates of the previous activity.
-    6. The endCoordinates of each transport segment should match the coordinates of the next activity.
-    7. Use realistic transportation methods based on distance and local infrastructure.
-    8. For walks under 15 minutes (0.25 hours), use "walk" as transportation.
-    9. Ensure the number of objects in the "dailyPlan" array matches the trip length of {preferences['tripLength']} days.
-    10. Use your knowledge, grounded by Google Search and Maps, to provide realistic and high-quality suggestions for locations, activities, restaurants, and transportation options.
-    11. Include realistic prices in the local currency for all transportation and activities.
+    6. Activity segments should NOT have "type" field (or can have "type": "activity").
+    7. The startCoordinates of each transport segment should match the coordinates of the previous activity.
+    8. The endCoordinates of each transport segment should match the coordinates of the next activity.
+    9. Use realistic transportation methods based on distance and local infrastructure.
+    10. For walks under 15 minutes (0.25 hours), use "walk" as transportation.
+    11. Ensure the number of objects in the "dailyPlan" array matches the trip length of {preferences['tripLength']} days.
+    12. Use your knowledge, grounded by Google Search and Maps, to provide realistic and high-quality suggestions for locations, activities, restaurants, and transportation options.
+    13. Include realistic prices in the local currency for all transportation and activities.
+    14. ENSURE ALL JSON USES DOUBLE QUOTES - this is critical for proper parsing
   """
 
 
 def extract_and_parse_json(text: str) -> Dict[str, Any]:
     """
     Extract and parse JSON from the response text.
+    Ensures proper double-quote formatting for JSON parsing.
 
     Args:
         text: The response text containing JSON
@@ -147,11 +156,27 @@ def extract_and_parse_json(text: str) -> Dict[str, Any]:
     if not json_string:
         raise ValueError("Extracted JSON string is empty.")
 
+    # Replace single quotes with double quotes (if any slipped through)
+    # But be careful not to replace quotes inside strings
+    # This is a best-effort cleanup
+    json_string = json_string.strip()
+
     try:
+        # First try parsing as-is
         return json.loads(json_string)
     except json.JSONDecodeError as error:
-        print(f"Failed to parse JSON: {json_string}")
-        raise ValueError(f"Invalid JSON format: {str(error)}")
+        print(f"Initial parse failed, attempting cleanup...")
+
+        # Try to fix common issues
+        # Replace single quotes with double quotes (simple approach)
+        # This won't work for all cases but helps with basic issues
+        try:
+            # More aggressive cleanup
+            cleaned = json_string.replace("'", '"')
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            print(f"Failed to parse JSON even after cleanup: {json_string[:500]}...")
+            raise ValueError(f"Invalid JSON format: {str(error)}")
 
 
 def validate_itinerary(itinerary: Dict[str, Any]) -> bool:
@@ -230,6 +255,7 @@ def generate_itinerary(
 
     Returns:
         Dictionary with 'itinerary' and 'groundingChunks' keys
+        The itinerary JSON will use double quotes for proper parsing
     """
     prompt = build_itinerary_prompt(preferences)
 
@@ -276,8 +302,13 @@ def generate_itinerary(
         if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
             grounding_chunks = candidate.grounding_metadata.grounding_chunks or []
 
+    # Ensure the returned itinerary is properly formatted with double quotes
+    # By re-serializing with json.dumps and ensure_ascii=False
+    itinerary_json_str = json.dumps(itinerary, ensure_ascii=False, indent=2)
+
     return {
         'itinerary': itinerary,
+        'itineraryJson': itinerary_json_str,  # Properly formatted JSON string
         'groundingChunks': grounding_chunks
     }
 
@@ -380,7 +411,9 @@ def get_daily_summary(itinerary: Dict[str, Any], day: int) -> Dict[str, Any]:
         'transports': transports
     }
 
+
 if __name__ == "__main__":
-    preferences = {"destination": "Singapore", "tripLength": "3 days", "budget": "10000", "currentLocation": {"latitude": 43.0, "longitude": 79.0}}
-    location = {"latitude": 43.0, "longitude": -79.0}
-    print(generate_itinerary(preferences, location))
+    preferences = {"destination": "Vancouver", "tripLength": "2 days", "budget": "500",
+                   "currentLocation": {"latitude": 43.0, "longitude": 79.0}}
+    currentLocation = {"latitude": 43.0, "longitude": -79.0}
+    print(generate_itinerary(preferences, currentLocation))
