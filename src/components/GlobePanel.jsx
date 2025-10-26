@@ -5,6 +5,7 @@ import { feature } from "topojson-client";
 import ReactCountryFlag from "react-country-flag";
 import countries from "i18n-iso-countries";
 import enLocale from "i18n-iso-countries/langs/en.json";
+import CountryDetailsOverlay from "./CountryDetailsOverlay";
 
 countries.registerLocale(enLocale);
 function getAlpha2(countryName) {
@@ -14,7 +15,9 @@ function getAlpha2(countryName) {
     "Solomon Is.": "SB",
     "Falkland Is.": "FK",
     "Fr. S. Antarctic Lands": "TF",
-    "Brunei": "BN"
+    "Brunei": "BN",
+    "Central African Rep.": "CF",
+    "Somaliland": "SO"
   };
   return fixes[countryName] || countries.getAlpha2Code(countryName, "en") || "UN";
 }
@@ -26,6 +29,7 @@ export default function GlobePanel({ onSelectCountry }) {
   const [countries, setCountries] = useState([]);
   const [search, setSearch] = useState("");
   const [highlightCountry, setHighlightCountry] = useState(null);
+  const [showDetailsOverlay, setShowDetailsOverlay] = useState(false);
 
   // Load country polygons (GeoJSON) once
   useEffect(() => {
@@ -92,15 +96,18 @@ export default function GlobePanel({ onSelectCountry }) {
     setHighlightCountry(d);
     centerOnCountry(d);
     onSelectCountry && onSelectCountry(d.properties.name);
+    // Close overlay if it's open
+    setShowDetailsOverlay(false);
   };
 
   // Handle clicks outside the popup
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (highlightCountry) {
-        // Check if click is outside the popup card
+      if (highlightCountry && !showDetailsOverlay) {
+        // Check if click is outside the popup card and overlay
         const popupElement = event.target.closest('.popup-card');
-        if (!popupElement) {
+        const overlayElement = event.target.closest('[class*="bg-black"]'); // Check for overlay backdrop
+        if (!popupElement && !overlayElement) {
           setHighlightCountry(null);
         }
       }
@@ -116,7 +123,7 @@ export default function GlobePanel({ onSelectCountry }) {
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('mouseup', handleClickOutside);
     };
-  }, [highlightCountry]);
+  }, [highlightCountry, showDetailsOverlay]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative flex items-center justify-center overflow-hidden">
@@ -139,7 +146,7 @@ export default function GlobePanel({ onSelectCountry }) {
 
       {/* Popup Card - Centered */}
       {highlightCountry && (
-        <div className="absolute top-[70%] left-[80%] transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
+        <div className="absolute top-[80%] left-[80%] transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
           <div className="popup-card bg-white rounded-xl shadow-xl w-64 overflow-hidden pointer-events-auto">
             <div className="p-3 flex items-center gap-4">
               <div className="flex-shrink-0">
@@ -155,6 +162,7 @@ export default function GlobePanel({ onSelectCountry }) {
             </div>
             <div className="px-3 pb-3">
               <button
+                onClick={() => setShowDetailsOverlay(true)}
                 className="mt-2 text-sm text-blue-600 hover:underline"
               >
                 Learn More about {highlightCountry.properties.name}
@@ -162,6 +170,14 @@ export default function GlobePanel({ onSelectCountry }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Country Details Overlay */}
+      {showDetailsOverlay && (
+        <CountryDetailsOverlay 
+          country={highlightCountry} 
+          onClose={() => setShowDetailsOverlay(false)} 
+        />
       )}
 
       {/* Search input */}
